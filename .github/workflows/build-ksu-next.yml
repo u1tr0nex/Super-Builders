@@ -219,9 +219,18 @@ jobs:
       run: |
         PATCH="$GITHUB_WORKSPACE/$VERSION_DIR/KernelSU-Next/patches/70_ksu_safety-kernelsu-next-${KERNEL_VER}.patch"
         if [ -s "$PATCH" ]; then
-          patch -p1 --no-backup-if-mismatch < "$PATCH"
+          # Surgically exclude the deprecated syscall hook from the blueprint
+          awk '/^diff --git.*syscall_event_bridge\.c/{skip=1} /^diff --git/ && !/syscall_event_bridge\.c/{skip=0} !skip' "$PATCH" > tmp.patch && mv tmp.patch "$PATCH"
+          
+          patch -p1 -l --no-backup-if-mismatch < "$PATCH" || true
         else
           echo "No 70_ patch needed"
+        fi
+        
+        # Align legacy syntax with KSU-Next v33188+ architecture natively
+        if [ -f kernel/feature/sucompat.c ]; then
+          sed -i 's/sh_user_path()/ksud_user_path()/g' kernel/feature/sucompat.c
+          awk '/static const char su_path\[\] = SU_PATH;/{c++; if(c>1) next} 1' kernel/feature/sucompat.c > tmp.c && mv tmp.c kernel/feature/sucompat.c
         fi
 
     - name: Apply ZeroMount Patch
